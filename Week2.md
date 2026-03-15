@@ -47,86 +47,138 @@
 
 ### 1-1 코드 값을 레이블로 변경하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+#### CASE WHEN THEN ELSE 구문은 파이썬의 if else 구문과 동일하게 작용한다
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+	user_id,
+    case
+    	WHEN register_device = 1 then '데스크톱'
+        when register_device = 2 then '스마트폰'
+        when register_device = 3 then '애플리케이션'
+        else ''
+        END as device_name
+from mst_users
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![1](image/1.png)
 
 ### 1-2 URL에서 요소 추출하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+#### MySQL에서는 SUBSTRING을 쓰는게 좋음!
+#### SUBSTRING(문자열, 시작위치, 길이)
+#### SUBSTRING_INDEX(문자열, 구분자, 개수) 구분자 기준으로 문자열을 나눈 뒤 앞 또는 뒤에서 N개를 반환
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    stamp,
+    SUBSTRING_INDEX(SUBSTRING_INDEX(referrer,'/',3),'/',-1) AS ref
+    FROM access_log
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![2](image/2.png)
+
 
 ### 1-3 문자열을 배열로 분해하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+#### 문장 특히 url같은경우 쪼개서 사용해야될 경우가 많음 (ex 크롤링 등..)
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    stamp,
+    url,
+    SUBSTRING_INDEX(
+        SUBSTRING_INDEX(
+            SUBSTRING_INDEX(url, '?', 1), '/', 4), '/', -1) AS path1,
+    SUBSTRING_INDEX(
+        SUBSTRING_INDEX(
+            SUBSTRING_INDEX(url, '?', 1), '/', 5), '/', -1) AS path2
+            
+FROM access_log;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![3](image/3.png)
+
 
 ### 1-4 날짜와 타임스탬프 다루기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+ - CURDATE - 현재날짜
+ - NOW - 현재시간
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    CURDATE() AS dt,
+    NOW() AS stamp;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![4](image/4.png)
+
 
 ### 1-5 결손 값을 디폴트 값으로 대치하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+#### sql에서 null은 연산시 결과값을 null로 만들어 데이터를 항상 가공해서 써야함 
+ - COALESCE는 여러 값 중 null이 아닌값 반환 -> null 처리 함수
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+	purchase_id ,amount ,coupon
+	, amount - coupon AS discount_amountl
+	, amount - COALESCE(coupon, 0) AS discount_amount2
+FROM purchase_log_with_coupon
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![5](image/5.png)
+
 
 
 ## 2. 여러 개의 값에 대한 조작 
 
 ### 2-1 문자열을 연결하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+#### 시도명이 다른 컬럼에 존재하는 경우 하나로 처리해서 사용해야되는 경우가 있음
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+	user_id, 
+	CONCAT(pref_name,  city_name) AS  pref_city
+FROM mst_user_location
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![6](image/6.png)
 
 ### 2-2 여러 개의 값을 비교하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+ - SIGN 함수는 매개변수가 양수라면 1,。이라면 0, 음수라면 -1을 리턴하는 함수
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT year, q1, q2 ,
+CASE
+	WHEN q1 <  q2 THEN ' + '
+	WHEN q1 =  q2 THEN  ''
+	ELSE '-'
+END  AS  judge_q1_q2
+,q2 - q1 AS  diff_q2_q1
+,SIGN(q2  - q1) AS  sign_q2_q1
+FROM quarterly_sales
+ORDER BY year
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![7](image/7.png)
+
 
 ### 2-3 2개의 값 비율 계산하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
+ - 정수, 실수형으로 나누기 / 자료형 변환이 자동으로 이뤄짐
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT dt ,ad_id, clicks / impressions AS ctr
+FROM advertising_stats
+WHERE dt = '2017-04-01'
+ORDER BY dt, ad_id
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![8](image/8.png)
+
 
 ### 2-4 두 값의 거리 계산하기
 
