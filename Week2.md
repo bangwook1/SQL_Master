@@ -185,30 +185,62 @@ ORDER BY dt, ad_id
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    x1,
+    y1,
+    x2,
+    y2,
+    SQRT( POWER( x1 - x2, 2 ) + POWER( y1 - y2, 2 ) ) AS dist
+FROM location_2d;
 ```
+![9](image/9.png)
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
 
 ### 2-5 날짜/시간을 계산하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    user_id,
+    register_stamp,
+    TIMESTAMPADD( HOUR, 1, register_stamp ) AS after_1_hour,
+    TIMESTAMPADD( MINUTE, -30, register_stamp ) AS before_30_minutes,
+    DATE( register_stamp ) AS register_date,
+    DATE_ADD( DATE( register_stamp ), INTERVAL 1 DAY ) AS after_1_day,
+    DATE_SUB( DATE( register_stamp ), INTERVAL 1 MONTH ) AS before_1_month
+FROM mst_users_with_dates;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![10](image/10.png)
+
 
 ### 2-6 IP 주소 다루기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    ip1,
+    ip2,
+    CASE
+        WHEN CONCAT(
+            SUBSTRING_INDEX( ip1, '.', 1 ), '.',
+            SUBSTRING_INDEX( SUBSTRING_INDEX( ip1, '.', 2 ), '.', -1 ), '.',
+            SUBSTRING_INDEX( SUBSTRING_INDEX( ip1, '.', 3 ), '.', -1 )
+        ) =
+        CONCAT(
+            SUBSTRING_INDEX( ip2, '.', 1 ), '.',
+            SUBSTRING_INDEX( SUBSTRING_INDEX( ip2, '.', 2 ), '.', -1 ), '.',
+            SUBSTRING_INDEX( SUBSTRING_INDEX( ip2, '.', 3 ), '.', -1 )
+        )
+        THEN 1
+        ELSE 0
+    END AS same_network_24
+FROM ip_pair;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![11](image/11.png)
 
 ## 03. 하나의 테이블에 대한 조작 
 
@@ -217,40 +249,83 @@ ORDER BY dt, ad_id
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    COUNT(*) AS total_count,
+    COUNT(DISTINCT user_id) AS user_count,
+    COUNT(DISTINCT product_id) AS product_count,
+    SUM(score) AS sum,
+    AVG(score) AS avg,
+    MAX(score) AS max,
+    MIN(score) AS min
+FROM review;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![12](image/12.png)
+
 
 ### 3-2 그룹 내부의 순서
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    user_id,
+    product_id,
+    score,
+    review_date,
+    ROW_NUMBER() OVER (
+        PARTITION BY user_id
+        ORDER BY review_date
+    ) AS row_num
+FROM review_with_dt
+ORDER BY user_id, row_num;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![13](image/13.png)
+
 
 ### 3-3 세로 기반 데이터를 가로 기반으로 변환하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    purchase_id,
+    GROUP_CONCAT(product_id ORDER BY product_id SEPARATOR ',') AS product_ids,
+    SUM(price) AS amount
+FROM purchase_detail_log
+GROUP BY purchase_id
+ORDER BY purchase_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![13](image/13.png)
 
 ### 3-4 가로 기반 데이터를 세로 기반으로 변환하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    l.purchase_id,
+    l.product_ids,
+    p.idx,
+    SUBSTRING_INDEX(
+        SUBSTRING_INDEX(l.product_ids, ',', p.idx),
+        ',',
+        -1
+    ) AS product_id
+FROM purchase_log AS l
+JOIN (
+    SELECT 1 AS idx
+    UNION ALL SELECT 2
+    UNION ALL SELECT 3
+) AS p
+    ON p.idx <= 1 + LENGTH(l.product_ids) - LENGTH(REPLACE(l.product_ids, ',', ''))
+ORDER BY l.purchase_id, p.idx;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![14](image/14.png)
+
 
 
 ## 04. 여러 개의 테이블 조작하기
@@ -260,50 +335,112 @@ ORDER BY dt, ad_id
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    'app1' AS app_name,
+    user_id,
+    name,
+    email
+FROM app1_mst_users
+
+UNION ALL
+
+SELECT
+    'app2' AS app_name,
+    user_id,
+    name,
+    email
+FROM app2_mst_users;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![15](image/15.png)
 
 ### 4-2 여러 개의 테이블을 가로로 정렬하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    m.category_id,
+    m.name,
+    s.sales,
+    r.product_id AS sale_product
+FROM mst_categories AS m
+JOIN category_sales AS s
+    ON m.category_id = s.category_id
+JOIN product_sale_ranking AS r
+    ON m.category_id = r.category_id
+ORDER BY m.category_id, r.rank_no;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![16](image/16.png)
 
 ### 4-3 조건 플래그를 0과 1로 표현하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    user_id,
+    register_date,
+    gender,
+    CASE
+        WHEN register_date >= '2016-01-01' THEN 1
+        ELSE 0
+    END AS is_new_user,
+    CASE
+        WHEN gender = 'M' THEN 1
+        ELSE 0
+    END AS is_male
+FROM mst_users
+ORDER BY user_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![17](image/17.png)
 
 ### 4-4 계산한 테이블에 이름 붙여 재사용하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH category_total AS (
+    SELECT
+        category_id,
+        SUM(sales) AS total_sales
+    FROM product_sale_ranking
+    GROUP BY category_id
+),
+category_avg AS (
+    SELECT
+        AVG(total_sales) AS avg_sales
+    FROM category_total
+)
+SELECT
+    ct.category_id,
+    ct.total_sales,
+    ca.avg_sales
+FROM category_total AS ct
+CROSS JOIN category_avg AS ca
+ORDER BY ct.category_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![18](image/18.png)
 
 ### 4-5 유사 테이블 만들기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+CREATE TABLE new_mst_users2 AS
+SELECT
+    user_id,
+    register_date,
+    gender
+FROM mst_users
+WHERE register_date >= '2016-01-01';
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![19](image/19.png)
+
 
 
 
