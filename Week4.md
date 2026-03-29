@@ -44,73 +44,217 @@
 
 ### 1-1 사용자의 액션 수 집계하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+COUNT(*) : 사용자별 전체 액션 수<br>
+GROUP BY user_id : 사용자 단위 집계<br>
+ORDER BY action_count DESC : 활동량 많은 사용자부터 확인
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    user_id,
+    COUNT(*) AS action_count
+FROM action_log
+GROUP BY user_id
+ORDER BY action_count DESC, user_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0330_01.png)
 
 ### 1-2 연령별 구분 집계하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+ - TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) : 현재 기준 만 나이 근사 계산
+ - CASE : 연령대를 범주형 변수로 변환
+ - 결과는 연령대별 사용자 수 분포 확인용
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    CASE
+        WHEN TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) < 20 THEN '10대 이하'
+        WHEN TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN 20 AND 29 THEN '20대'
+        WHEN TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN 30 AND 39 THEN '30대'
+        WHEN TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN 40 AND 49 THEN '40대'
+        ELSE '50대 이상'
+    END AS age_group,
+    COUNT(*) AS user_count
+FROM mst_users
+GROUP BY age_group
+ORDER BY user_count DESC;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
-
+![](image/0330_02.png)
 ### 1-3 연령별 구분의 특징 추출하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+ - 같은 연령대라도 액션별 강도가 다를 수 있음
+ - COUNT(DISTINCT a.user_id) 로 실제 행동한 사용자 수 확인
+ - avg_action_per_user 로 연령대별 평균 행동 강도 비교 가능
 ```sql
-여기에 코드를 적어주세요.
+SELECT
+    CASE
+        WHEN TIMESTAMPDIFF(YEAR, u.birth_date, CURDATE()) < 20 THEN '10대 이하'
+        WHEN TIMESTAMPDIFF(YEAR, u.birth_date, CURDATE()) BETWEEN 20 AND 29 THEN '20대'
+        WHEN TIMESTAMPDIFF(YEAR, u.birth_date, CURDATE()) BETWEEN 30 AND 39 THEN '30대'
+        WHEN TIMESTAMPDIFF(YEAR, u.birth_date, CURDATE()) BETWEEN 40 AND 49 THEN '40대'
+        ELSE '50대 이상'
+    END AS age_group,
+    a.action,
+    COUNT(*) AS action_count,
+    COUNT(DISTINCT a.user_id) AS user_count,
+    ROUND(COUNT(*) / COUNT(DISTINCT a.user_id), 2) AS avg_action_per_user
+FROM mst_users u
+JOIN action_log a
+    ON u.user_id = a.user_id
+GROUP BY age_group, a.action
+ORDER BY age_group, action_count DESC;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
- 
+![](image/0330_03.png) 
 ### 1-4 사용자의 방문 빈도 집계하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+ - COUNT(DISTINCT DATE(stamp)) : 방문한 날짜 수
+ - 하루에 여러 번 들어와도 1일 방문으로 계산
+ - 방문 강도를 범주화해서 해석하기 쉬운 형태로 변환
 ```sql
-여기에 코드를 적어주세요.
+WITH visit_days AS (
+    SELECT
+        user_id,
+        COUNT(DISTINCT DATE(stamp)) AS visit_day_count
+    FROM action_log
+    GROUP BY user_id
+)
+SELECT
+    CASE
+        WHEN visit_day_count = 1 THEN '1일 방문'
+        WHEN visit_day_count BETWEEN 2 AND 3 THEN '2~3일 방문'
+        WHEN visit_day_count BETWEEN 4 AND 7 THEN '4~7일 방문'
+        ELSE '8일 이상 방문'
+    END AS visit_frequency_group,
+    COUNT(*) AS user_count
+FROM visit_days
+GROUP BY visit_frequency_group
+ORDER BY user_count DESC;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
-
+![](image/0330_04.png)
 ### 1-5 벤 다이어그램으로 사용자 액션 집계하기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+ - MAX(CASE WHEN ... THEN 1 ELSE 0 END) : 액션 수행 여부 플래그화
+ - 조합별 사용자 수를 보면 퍼널 구조도 간접적으로 확인 가능
+ - 예: 1, 1, 1 이면 view/cart/purchase 모두 수행한 사용자
 ```sql
-여기에 코드를 적어주세요.
+WITH action_flag AS (
+    SELECT
+        user_id,
+        MAX(CASE WHEN action = 'view' THEN 1 ELSE 0 END) AS did_view,
+        MAX(CASE WHEN action = 'cart' THEN 1 ELSE 0 END) AS did_cart,
+        MAX(CASE WHEN action = 'purchase' THEN 1 ELSE 0 END) AS did_purchase
+    FROM action_log
+    GROUP BY user_id
+)
+SELECT
+    did_view,
+    did_cart,
+    did_purchase,
+    COUNT(*) AS user_count
+FROM action_flag
+GROUP BY did_view, did_cart, did_purchase
+ORDER BY did_view DESC, did_cart DESC, did_purchase DESC;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
-
+![](image/0330_05.png)
 ### 1-6 Decile 분석을 사용해 사용자를 10단계 그룹으로 나누기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+ - NTILE(10) : 사용자들을 10개 그룹으로 분할
+ - decile = 1 이 가장 높은 구매 금액 그룹
+ - 그룹별 총매출과 평균매출을 함께 보면 상위 고객 쏠림 정도 파악 가능
 ```sql
-여기에 코드를 적어주세요.
+WITH user_purchase_amount AS (
+    SELECT
+        user_id,
+        SUM(amount) AS total_amount
+    FROM action_log
+    WHERE action = 'purchase'
+    GROUP BY user_id
+),
+decile_base AS (
+    SELECT
+        user_id,
+        total_amount,
+        NTILE(10) OVER (ORDER BY total_amount DESC) AS decile
+    FROM user_purchase_amount
+)
+SELECT
+    decile,
+    COUNT(*) AS user_count,
+    SUM(total_amount) AS total_amount_sum,
+    ROUND(AVG(total_amount), 2) AS avg_amount
+FROM decile_base
+GROUP BY decile
+ORDER BY decile;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
-
+![](image/0330_06.png)
 ### 1-7 RFM 분석으로 사용자를 3가지 관점의 그룹으로 나누기
 
-<!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
-
+ - MAX(purchase_date) : 가장 최근 구매일
+ - COUNT(*) : 구매 빈도
+ - SUM(amount) : 누적 구매 금액
 ```sql
-여기에 코드를 적어주세요.
+WITH purchase_base AS (
+    SELECT
+        user_id,
+        DATE(MAX(stamp)) AS recent_purchase_date,
+        COUNT(*) AS frequency,
+        SUM(amount) AS monetary
+    FROM action_log
+    WHERE action = 'purchase'
+    GROUP BY user_id
+),
+rfm_base AS (
+    SELECT
+        user_id,
+        DATEDIFF('2016-11-05', recent_purchase_date) AS recency,
+        frequency,
+        monetary
+    FROM purchase_base
+),
+rfm_score AS (
+    SELECT
+        user_id,
+        recency,
+        frequency,
+        monetary,
+        CASE
+            WHEN recency <= 1 THEN 5
+            WHEN recency <= 2 THEN 4
+            WHEN recency <= 3 THEN 3
+            WHEN recency <= 5 THEN 2
+            ELSE 1
+        END AS r_score,
+        CASE
+            WHEN frequency >= 5 THEN 5
+            WHEN frequency = 4 THEN 4
+            WHEN frequency = 3 THEN 3
+            WHEN frequency = 2 THEN 2
+            ELSE 1
+        END AS f_score,
+        CASE
+            WHEN monetary >= 4000 THEN 5
+            WHEN monetary >= 3000 THEN 4
+            WHEN monetary >= 2000 THEN 3
+            WHEN monetary >= 1000 THEN 2
+            ELSE 1
+        END AS m_score
+    FROM rfm_base
+)
+SELECT
+    user_id,
+    recency,
+    frequency,
+    monetary,
+    r_score,
+    f_score,
+    m_score
+FROM rfm_score
+ORDER BY r_score DESC, f_score DESC, m_score DESC, user_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
-
+![](image/0330_07.png)
 
 ### 🎉 수고하셨습니다.
