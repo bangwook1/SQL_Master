@@ -48,90 +48,365 @@
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH daily_register AS (
+    SELECT
+        DATE(register_date) AS register_day,
+        COUNT(*) AS register_user_count
+    FROM mst_users
+    GROUP BY DATE(register_date)
+),
+register_trend AS (
+    SELECT
+        register_day,
+        register_user_count,
+        LAG(register_user_count) OVER (ORDER BY register_day) AS prev_day_count,
+        AVG(register_user_count) OVER (
+            ORDER BY register_day
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ) AS moving_avg_7d
+    FROM daily_register
+)
+SELECT
+    register_day,
+    register_user_count,
+    prev_day_count,
+    register_user_count - prev_day_count AS diff_from_prev_day,
+    moving_avg_7d
+FROM register_trend
+ORDER BY register_day;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_01.png)
 
 ### 2-2 지속률과 정착률 산출하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH action_with_register AS (
+    SELECT
+        u.user_id,
+        DATE(u.register_date) AS register_day,
+        DATE(a.stamp) AS action_day,
+        DATEDIFF(DATE(a.stamp), DATE(u.register_date)) AS diff_day
+    FROM mst_users u
+    LEFT JOIN action_log a
+        ON u.user_id = a.user_id
+),
+user_retention_flag AS (
+    SELECT
+        user_id,
+        register_day,
+        MAX(CASE WHEN diff_day = 1 THEN 1 ELSE 0 END) AS repeat_1d,
+        MAX(CASE WHEN diff_day BETWEEN 7 AND 13 THEN 1 ELSE 0 END) AS retention_7d,
+        MAX(CASE WHEN diff_day BETWEEN 14 AND 20 THEN 1 ELSE 0 END) AS retention_14d,
+        MAX(CASE WHEN diff_day BETWEEN 21 AND 27 THEN 1 ELSE 0 END) AS retention_28d
+    FROM action_with_register
+    GROUP BY user_id, register_day
+)
+SELECT
+    register_day,
+    COUNT(*) AS registered_users,
+    AVG(repeat_1d) * 100 AS repeat_1d_rate,
+    AVG(retention_7d) * 100 AS retention_7d_rate,
+    AVG(retention_14d) * 100 AS retention_14d_rate,
+    AVG(retention_28d) * 100 AS retention_28d_rate
+FROM user_retention_flag
+GROUP BY register_day
+ORDER BY register_day;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_02.png)
 
 ### 2-3 지속과 정착에 영향을 주는 액션 집계하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH action_with_register AS (
+    SELECT
+        u.user_id,
+        DATE(u.register_date) AS register_day,
+        a.action,
+        DATE(a.stamp) AS action_day,
+        DATEDIFF(DATE(a.stamp), DATE(u.register_date)) AS diff_day
+    FROM mst_users u
+    LEFT JOIN action_log a
+        ON u.user_id = a.user_id
+),
+user_action_flag AS (
+    SELECT
+        user_id,
+        register_day,
+        action,
+        MAX(CASE WHEN diff_day BETWEEN 0 AND 6 THEN 1 ELSE 0 END) AS did_action_in_7d,
+        MAX(CASE WHEN diff_day BETWEEN 21 AND 27 THEN 1 ELSE 0 END) AS retained_28d
+    FROM action_with_register
+    GROUP BY user_id, register_day, action
+)
+SELECT
+    action,
+    COUNT(*) AS users,
+    AVG(did_action_in_7d) * 100 AS action_usage_rate,
+    AVG(CASE WHEN did_action_in_7d = 1 THEN retained_28d END) * 100 AS retained_if_action,
+    AVG(CASE WHEN did_action_in_7d = 0 THEN retained_28d END) * 100 AS retained_if_no_action
+FROM user_action_flag
+GROUP BY action
+ORDER BY action;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_03.png)
  
 ### 2-4 액션 수에 따른 정착률 집계하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH action_with_register AS (
+    SELECT
+        u.user_id,
+        a.action,
+        DATEDIFF(DATE(a.stamp), DATE(u.register_date)) AS diff_day
+    FROM mst_users u
+    LEFT JOIN action_log a
+        ON u.user_id = a.user_id
+),
+action_count AS (
+    SELECT
+        user_id,
+        action,
+        SUM(CASE WHEN diff_day BETWEEN 0 AND 6 THEN 1 ELSE 0 END) AS action_cnt_7d,
+        MAX(CASE WHEN diff_day BETWEEN 21 AND 27 THEN 1 ELSE 0 END) AS retained_28d
+    FROM action_with_register
+    GROUP BY user_id, action
+),
+bucketed AS (
+    SELECT
+        user_id,
+        action,
+        retained_28d,
+        CASE
+            WHEN action_cnt_7d = 0 THEN '0'
+            WHEN action_cnt_7d BETWEEN 1 AND 5 THEN '1 ~ 5'
+            WHEN action_cnt_7d BETWEEN 6 AND 10 THEN '6 ~ 10'
+            ELSE '11+'
+        END AS action_count_range
+    FROM action_count
+)
+SELECT
+    action,
+    action_count_range,
+    COUNT(*) AS users,
+    AVG(retained_28d) * 100 AS retention_28d_rate
+FROM bucketed
+GROUP BY action, action_count_range
+ORDER BY action, action_count_range;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_04.png)
 
 ### 2-5 사용 일수에 따른 정착률 집계하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH action_days AS (
+    SELECT
+        u.user_id,
+        DATE(u.register_date) AS register_day,
+        DATE(a.stamp) AS action_day,
+        DATEDIFF(DATE(a.stamp), DATE(u.register_date)) AS diff_day
+    FROM mst_users u
+    LEFT JOIN action_log a
+        ON u.user_id = a.user_id
+),
+usage_summary AS (
+    SELECT
+        user_id,
+        COUNT(DISTINCT CASE WHEN diff_day BETWEEN 1 AND 7 THEN action_day END) AS used_days_in_7d,
+        MAX(CASE WHEN diff_day BETWEEN 21 AND 27 THEN 1 ELSE 0 END) AS retained_28d
+    FROM action_days
+    GROUP BY user_id
+)
+SELECT
+    used_days_in_7d,
+    COUNT(*) AS users,
+    AVG(retained_28d) * 100 AS retention_28d_rate
+FROM usage_summary
+GROUP BY used_days_in_7d
+ORDER BY used_days_in_7d;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_05.png)
 
 ### 2-6 사용자의 잔존율 집계하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH action_with_register AS (
+    SELECT
+        u.user_id,
+        DATE(u.register_date) AS register_day,
+        DATEDIFF(DATE(a.stamp), DATE(u.register_date)) AS diff_day
+    FROM mst_users u
+    LEFT JOIN action_log a
+        ON u.user_id = a.user_id
+),
+retention_base AS (
+    SELECT
+        register_day,
+        user_id,
+        diff_day
+    FROM action_with_register
+    WHERE diff_day BETWEEN 0 AND 30
+),
+cohort_size AS (
+    SELECT
+        register_day,
+        COUNT(DISTINCT user_id) AS cohort_users
+    FROM retention_base
+    WHERE diff_day = 0
+    GROUP BY register_day
+),
+retention_calc AS (
+    SELECT
+        register_day,
+        diff_day,
+        COUNT(DISTINCT user_id) AS active_users
+    FROM retention_base
+    GROUP BY register_day, diff_day
+)
+SELECT
+    r.register_day,
+    r.diff_day,
+    c.cohort_users,
+    r.active_users,
+    ROUND(r.active_users / c.cohort_users * 100, 2) AS retention_rate
+FROM retention_calc r
+JOIN cohort_size c
+    ON r.register_day = c.register_day
+ORDER BY r.register_day, r.diff_day;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_06.png)
 
 ### 2-7 방문 빈도를 기반으로 사용자 속성을 정의하고 집계하기
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH visit_summary AS (
+    SELECT
+        user_id,
+        COUNT(DISTINCT DATE(stamp)) AS visit_days,
+        COUNT(*) AS total_actions
+    FROM action_log
+    GROUP BY user_id
+),
+user_segment AS (
+    SELECT
+        user_id,
+        visit_days,
+        total_actions,
+        CASE
+            WHEN visit_days >= 20 THEN 'heavy_user'
+            WHEN visit_days >= 10 THEN 'middle_user'
+            WHEN visit_days >= 3 THEN 'light_user'
+            ELSE 'new_or_low_user'
+        END AS user_type
+    FROM visit_summary
+)
+SELECT
+    user_type,
+    COUNT(*) AS users,
+    AVG(visit_days) AS avg_visit_days,
+    AVG(total_actions) AS avg_total_actions
+FROM user_segment
+GROUP BY user_type
+ORDER BY users DESC;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_07.png)
 
 ### 2-8 방문 종류를 기반으로 성장지수 집계하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH action_summary AS (
+    SELECT
+        user_id,
+        SUM(CASE WHEN action = 'view' THEN 1 ELSE 0 END) AS view_cnt,
+        SUM(CASE WHEN action = 'comment' THEN 1 ELSE 0 END) AS comment_cnt,
+        SUM(CASE WHEN action = 'follow' THEN 1 ELSE 0 END) AS follow_cnt,
+        SUM(CASE WHEN action = 'purchase' THEN 1 ELSE 0 END) AS purchase_cnt
+    FROM action_log
+    GROUP BY user_id
+),
+growth_index AS (
+    SELECT
+        user_id,
+        view_cnt,
+        comment_cnt,
+        follow_cnt,
+        purchase_cnt,
+        (view_cnt * 1)
+        + (comment_cnt * 3)
+        + (follow_cnt * 2)
+        + (purchase_cnt * 5) AS growth_score
+    FROM action_summary
+)
+SELECT
+    user_id,
+    view_cnt,
+    comment_cnt,
+    follow_cnt,
+    purchase_cnt,
+    growth_score
+FROM growth_index
+ORDER BY growth_score DESC;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_08.png)
 
 ### 2-9 지표 개선 방법 익히기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH register_users AS (
+    SELECT
+        user_id,
+        DATE(register_date) AS register_day
+    FROM mst_users
+),
+action_summary AS (
+    SELECT
+        r.user_id,
+        r.register_day,
+        COUNT(a.stamp) AS total_actions,
+        COUNT(DISTINCT DATE(a.stamp)) AS active_days,
+        MAX(CASE WHEN DATEDIFF(DATE(a.stamp), r.register_day) = 1 THEN 1 ELSE 0 END) AS repeat_1d,
+        MAX(CASE WHEN DATEDIFF(DATE(a.stamp), r.register_day) BETWEEN 21 AND 27 THEN 1 ELSE 0 END) AS retention_28d
+    FROM register_users r
+    LEFT JOIN action_log a
+        ON r.user_id = a.user_id
+    GROUP BY r.user_id, r.register_day
+)
+SELECT
+    register_day,
+    COUNT(*) AS registered_users,
+    AVG(total_actions) AS avg_total_actions,
+    AVG(active_days) AS avg_active_days,
+    AVG(repeat_1d) * 100 AS repeat_1d_rate,
+    AVG(retention_28d) * 100 AS retention_28d_rate
+FROM action_summary
+GROUP BY register_day
+ORDER BY register_day;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_09.png)
 
 
 ## 3. 시계열에 따른 사용자의 개별적인 행동 분석하기 
@@ -141,30 +416,111 @@
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH ordered_actions AS (
+    SELECT
+        user_id,
+        stamp,
+        LAG(stamp) OVER (
+            PARTITION BY user_id
+            ORDER BY stamp
+        ) AS prev_stamp
+    FROM action_log
+)
+SELECT
+    user_id,
+    stamp,
+    prev_stamp,
+    TIMESTAMPDIFF(HOUR, prev_stamp, stamp) AS diff_hours
+FROM ordered_actions
+WHERE prev_stamp IS NOT NULL
+ORDER BY user_id, stamp;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_10.png)
 
 ### 3-2 카트 추가 후에 구매했는지 파악하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH cart_action AS (
+    SELECT
+        user_id,
+        product_id,
+        MIN(stamp) AS cart_time
+    FROM action_log
+    WHERE action = 'add_cart'
+    GROUP BY user_id, product_id
+),
+buy_action AS (
+    SELECT
+        user_id,
+        product_id,
+        MIN(stamp) AS buy_time
+    FROM action_log
+    WHERE action = 'purchase'
+    GROUP BY user_id, product_id
+)
+SELECT
+    c.user_id,
+    c.product_id,
+    c.cart_time,
+    b.buy_time,
+    CASE
+        WHEN b.buy_time IS NOT NULL
+             AND b.buy_time >= c.cart_time THEN 1
+        ELSE 0
+    END AS purchased_after_cart
+FROM cart_action c
+LEFT JOIN buy_action b
+    ON c.user_id = b.user_id
+   AND c.product_id = b.product_id
+ORDER BY c.user_id, c.product_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_10.png)
 
 ### 3-3 등록으로부터의 매출을 날짜별로 집계하기 
 
 <!-- 이 부분을 지우고 새롭게 배운 내용을 자유롭게 정리해주세요. -->
 
 ```sql
-여기에 코드를 적어주세요.
+WITH cart_action AS (
+    SELECT
+        user_id,
+        product_id,
+        MIN(stamp) AS cart_time
+    FROM action_log
+    WHERE action = 'add_cart'
+    GROUP BY user_id, product_id
+),
+buy_action AS (
+    SELECT
+        user_id,
+        product_id,
+        MIN(stamp) AS buy_time
+    FROM action_log
+    WHERE action = 'purchase'
+    GROUP BY user_id, product_id
+)
+SELECT
+    c.user_id,
+    c.product_id,
+    c.cart_time,
+    b.buy_time,
+    CASE
+        WHEN b.buy_time IS NOT NULL
+             AND b.buy_time >= c.cart_time THEN 1
+        ELSE 0
+    END AS purchased_after_cart
+FROM cart_action c
+LEFT JOIN buy_action b
+    ON c.user_id = b.user_id
+   AND c.product_id = b.product_id
+ORDER BY c.user_id, c.product_id;
 ```
 
-<!-- 이 부분을 지우고 실행 결과 화면을 제출해주세요. -->
+![](image/0406_10.png)
 
 
 
